@@ -426,6 +426,25 @@ async function init() {
     btn.classList.toggle('btn-pill-active', Number(btn.dataset.value) === uiState.songCount);
   });
 
+  // Check if generation was running while popup was closed (Option A restore)
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'POPUP_OPENED', payload: {} });
+    if (res?.restore === 'results' && res.tracks) {
+      uiState.currentTracks = res.tracks;
+      renderResults(res.tracks);
+      showView('view-results');
+    } else if (res?.restore === 'progress') {
+      resetSteps();
+      if (res.step) setStep(res.step, 'active');
+      showView('view-progress');
+      startElapsedTimer();
+      startKeepalive();
+      uiState.generating = true;
+    }
+  } catch (_) {
+    // Background not ready yet — start fresh
+  }
+
   // Render dynamic sections
   renderGenreTabs();
   renderGenreGrid();
