@@ -11,14 +11,14 @@
   // ── Selectors (mirrors sunoSelectors.js — no import in content scripts) ──
   const SEL = {
     promptInput: [
-      'textarea[maxlength="1000"]',
-      'textarea[maxlength="2000"]',
       'textarea[maxlength="3000"]',
       'textarea.resize-none',
       'textarea[class*="bg-transparent"]',
+      'textarea[maxlength="1000"]',
+      'textarea[maxlength="2000"]',
       'textarea[placeholder*="prompt" i]',
       'textarea[placeholder*="describe" i]',
-      'textarea[placeholder*="Enter" i]',
+      'textarea[placeholder*="indie" i]',
       '[contenteditable="true"][class*="prompt" i]',
       '[contenteditable="true"][data-placeholder]',
       'form textarea',
@@ -26,13 +26,12 @@
       'textarea',
     ],
     generateBtn: [
-      'button:has(span.hxc-btn-content)',
-      'button:has(svg.h-5)',
-      'button[type="submit"]',
+      'button[aria-label="Create song"]',
       'button[aria-label*="create" i]',
+      'button:has(span.hxc-btn-content)',
+      'button:has(svg.h-5.w-5)',
       'button[aria-label*="generate" i]',
       'button[data-testid*="create" i]',
-      'button[data-testid*="generate" i]',
     ],
     loginIndicator: [
       'img[alt*="avatar" i]',
