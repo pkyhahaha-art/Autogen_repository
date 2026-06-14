@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "SunoGen — AI Music Generator",
+  "version": "1.0.0",
+  "description": "Generate, process, and download AI music from Suno with one click",
+  "permissions": [
+    "tabs",
+    "scripting",
+    "activeTab",
+    "storage",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://suno.com/*",
+    "https://*.suno.ai/*"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/background.js",
+    "type": "module"
+},
+  "content_scripts": [
+    {
+      "matches": ["https://suno.com/*"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["lib/*", "assets/*"],
+      "matches": ["https://suno.com/*"]
+    }
+  ]
+}
