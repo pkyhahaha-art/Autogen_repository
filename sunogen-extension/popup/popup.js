@@ -298,14 +298,25 @@ function startKeepalive() {
 function stopKeepalive() { clearInterval(keepaliveTimer); }
 
 // ── Background Messages ────────────────────────────────────────────
+// Step order for marking previous steps as done
+const STEP_ORDER = ['step-open-suno','step-fill-prompt','step-submit','step-wait','step-download-audio'];
+
 chrome.runtime.onMessage.addListener((msg) => {
   if (!msg?.type) return;
   switch (msg.type) {
-    case 'GENERATION_PROGRESS':
-      if (msg.payload?.step) setStep(msg.payload.step, 'active');
+    case 'GENERATION_PROGRESS': {
+      const step = msg.payload?.step;
+      if (!step) break;
+      const idx = STEP_ORDER.indexOf(step);
+      STEP_ORDER.forEach((id, i) => {
+        if (i < idx)  setStep(id, 'done');
+        if (i === idx) setStep(id, 'active');
+      });
       break;
+    }
     case 'GENERATION_COMPLETE':
       stopElapsedTimer(); stopKeepalive();
+      STEP_ORDER.forEach(id => setStep(id, 'done'));
       uiState.generating    = false;
       uiState.currentTracks = msg.payload?.tracks ?? [];
       renderResults(uiState.currentTracks);
@@ -314,7 +325,7 @@ chrome.runtime.onMessage.addListener((msg) => {
     case 'GENERATION_ERROR':
       stopElapsedTimer(); stopKeepalive();
       uiState.generating = false;
-      showError(msg.payload?.userMessage ?? 'เกิดข้อผิดพลาด');
+      showError(msg.payload?.userMessage ?? 'เกิดข้อผิดพลาด กรุณาลองใหม่');
       showView('view-config');
       break;
   }
@@ -324,6 +335,11 @@ chrome.runtime.onMessage.addListener((msg) => {
 function renderResults(tracks) {
   const list = $('track-list');
   list.innerHTML = '';
+
+  if (!tracks.length) {
+    list.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:24px;font-size:12px;">ไม่พบเพลง — ลอง Generate ใหม่</p>';
+    return;
+  }
 
   tracks.forEach((track, i) => {
     track.selectedPreset = 'original';
