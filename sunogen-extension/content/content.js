@@ -1,218 +1,250 @@
-/* Content script — runs on https://suno.com/*
-   Must NOT use ES Modules (content scripts don't support type="module").
-   Uses IIFE to avoid polluting global scope. */
+/* Content script — injected into https://suno.com/*
+   Must NOT use ES Modules. Uses IIFE + init guard. */
 
 (function () {
   'use strict';
 
-  // ── DOM Selectors (prioritized: aria > data-testid > placeholder > class) ──
-  const SELECTORS = {
+  // Prevent double-init if script injected more than once
+  if (window.__sunoGenReady) return;
+  window.__sunoGenReady = true;
+
+  // ── Selectors (mirrors sunoSelectors.js — no import in content scripts) ──
+  const SEL = {
     promptInput: [
-      'textarea[placeholder*="Describe"]',
-      'textarea[placeholder*="describe"]',
-      'textarea[aria-label*="prompt"]',
-      'textarea[aria-label*="Prompt"]',
-      '[data-testid="prompt-input"]',
-      'textarea.sc-prompt',
+      'textarea[maxlength="1000"]',
+      'textarea.resize-none',
+      'textarea[class*="bg-transparent"]',
+      'form textarea',
+      'textarea',
     ],
     generateBtn: [
-      'button[aria-label*="Create"]',
-      'button[aria-label*="Generate"]',
-      '[data-testid="generate-btn"]',
-      '[data-testid="create-btn"]',
-      'button:has(svg + span)',
+      'button:has(span.hxc-btn-content)',
+      'button:has(svg.h-5)',
+      'button[type="submit"]',
     ],
     loginIndicator: [
+      'img[alt*="avatar" i]',
+      'img[alt*="profile" i]',
       '[data-testid="user-avatar"]',
-      'img[alt*="avatar"]',
-      'button[aria-label*="Account"]',
+      '[data-testid="account-btn"]',
+      'button[aria-label*="Account" i]',
     ],
-    audioElements: [
+    notLoggedIn: [
+      'a[href*="sign-in"]',
+      'a[href*="login"]',
+    ],
+    audioElement: [
+      'audio[src*="suno"]',
+      'audio[src*="cdn"]',
       'audio[src]',
-      'audio source[src]',
-    ],
-    errorMsg: [
-      '[data-testid="error-message"]',
-      '.error-message',
-      '[role="alert"]',
     ],
   };
 
-  // ── Selector Helpers ──────────────────────────────────────────────
-  function querySelector(selectorList) {
-    for (const sel of selectorList) {
+  // ── Selector Helpers ───────────────────────────────────────────
+  function qs(list) {
+    for (const sel of list) {
       try {
         const el = document.querySelector(sel);
         if (el) return el;
-      } catch (_) { /* invalid selector — skip */ }
+      } catch (_) {}
     }
     return null;
   }
 
-  function querySelectorAll(selectorList) {
-    for (const sel of selectorList) {
+  function qsAll(list) {
+    for (const sel of list) {
       try {
-        const els = document.querySelectorAll(sel);
-        if (els.length > 0) return Array.from(els);
-      } catch (_) { /* skip */ }
+        const els = [...document.querySelectorAll(sel)];
+        if (els.length) return els;
+      } catch (_) {}
     }
     return [];
   }
 
-  function waitForElement(selectorList, timeoutMs = 10000) {
+  function waitFor(list, timeoutMs = 10000) {
     return new Promise((resolve, reject) => {
-      const el = querySelector(selectorList);
-      if (el) { resolve(el); return; }
+      const found = qs(list);
+      if (found) { resolve(found); return; }
 
-      const timer = setTimeout(() => {
-        observer.disconnect();
-        reject(new Error('Element not found: ' + selectorList[0]));
+      const deadline = setTimeout(() => {
+        obs.disconnect();
+        reject(new Error('waitFor timeout: ' + list[0]));
       }, timeoutMs);
 
-      const observer = new MutationObserver(() => {
-        const found = querySelector(selectorList);
-        if (found) {
-          clearTimeout(timer);
-          observer.disconnect();
-          resolve(found);
-        }
+      const obs = new MutationObserver(() => {
+        const el = qs(list);
+        if (el) { clearTimeout(deadline); obs.disconnect(); resolve(el); }
       });
-      observer.observe(document.body, { childList: true, subtree: true });
+      obs.observe(document.documentElement, { childList: true, subtree: true });
     });
   }
 
-  // ── React-aware Input Setter ──────────────────────────────────────
-  function setNativeValue(el, value) {
-    const nativeInputValue = Object.getOwnPropertyDescriptor(
-      window.HTMLTextAreaElement.prototype, 'value'
-    );
-    nativeInputValue?.set?.call(el, value);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
+  // ── Login Check ────────────────────────────────────────────────
+  function isLoggedIn() {
+    // If a sign-in link is visible → not logged in
+    const notLogged = qs(SEL.notLoggedIn);
+    if (notLogged) return false;
+    // If any login indicator exists → logged in
+    const loggedEl = qs(SEL.loginIndicator);
+    return !!loggedEl;
+  }
+
+  // ── React-aware Value Setter ───────────────────────────────────
+  function setReactValue(el, value) {
+    const proto = Object.getPrototypeOf(el);
+    const desc  = Object.getOwnPropertyDescriptor(proto, 'value');
+    desc?.set?.call(el, value);
+    el.dispatchEvent(new Event('input',  { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  // ── Login Check ──────────────────────────────────────────────────
-  function isLoggedIn() {
-    return querySelector(SELECTORS.loginIndicator) !== null;
+  // ── Find Create Button (CSS + text fallback) ───────────────────
+  function findCreateButton() {
+    const byCss = qs(SEL.generateBtn);
+    if (byCss) return byCss;
+    // JS text-content fallback
+    return [...document.querySelectorAll('button')].find(btn =>
+      btn.textContent.trim().includes('Create') && btn.querySelector('svg')
+    ) ?? null;
   }
 
-  // ── Audio URL Extraction ──────────────────────────────────────────
+  // ── Extract Audio URLs ─────────────────────────────────────────
   function extractAudioUrls() {
     const urls = new Set();
 
-    querySelectorAll(SELECTORS.audioElements).forEach(el => {
-      const src = el.tagName === 'SOURCE' ? el.src : el.getAttribute('src');
-      if (src && src.startsWith('http')) urls.add(src);
+    // 1. <audio src="...">
+    qsAll(SEL.audioElement).forEach(el => {
+      const src = el.getAttribute('src') || el.src;
+      if (src?.startsWith('http')) urls.add(src);
     });
 
-    // Also check elements that may load lazily
-    document.querySelectorAll('[data-src]').forEach(el => {
-      const src = el.getAttribute('data-src');
-      if (src?.includes('suno') && src.endsWith('.mp3')) urls.add(src);
+    // 2. <source src="..."> inside <audio>
+    [...document.querySelectorAll('audio > source[src]')].forEach(el => {
+      if (el.src?.startsWith('http')) urls.add(el.src);
+    });
+
+    // 3. Any element with data-src pointing to known CDN
+    [...document.querySelectorAll('[data-src]')].forEach(el => {
+      const s = el.getAttribute('data-src');
+      if (s && (s.includes('suno.ai') || s.includes('cdn')) && s.includes('.mp3')) urls.add(s);
     });
 
     return [...urls];
   }
 
-  // ── Audio Observer ────────────────────────────────────────────────
+  // ── Watch for Audio (MutationObserver + timeout) ───────────────
   function watchForAudio(timeoutMs = 180000) {
     return new Promise((resolve, reject) => {
-      // Check if already present
+      // Already present?
       const existing = extractAudioUrls();
-      if (existing.length > 0) { resolve(existing); return; }
+      if (existing.length) { resolve(existing); return; }
 
-      const timer = setTimeout(() => {
-        observer.disconnect();
-        reject(new Error('Audio generation timeout'));
+      const deadline = setTimeout(() => {
+        obs.disconnect();
+        reject(new Error('audio_timeout'));
       }, timeoutMs);
 
-      const observer = new MutationObserver(() => {
+      const obs = new MutationObserver(() => {
         const urls = extractAudioUrls();
-        if (urls.length > 0) {
-          clearTimeout(timer);
-          observer.disconnect();
+        if (urls.length) {
+          clearTimeout(deadline);
+          obs.disconnect();
           resolve(urls);
         }
       });
-      observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+      obs.observe(document.documentElement, {
+        childList:   true,
+        subtree:     true,
+        attributes:  true,
+        attributeFilter: ['src', 'data-src'],
+      });
     });
   }
 
-  // ── Main Flow ─────────────────────────────────────────────────────
-  async function fillAndSubmit(prompt, songCount) {
+  // ── Main Automation Flow ───────────────────────────────────────
+  async function fillAndSubmit(prompt) {
     // 1. Login check
     if (!isLoggedIn()) {
       chrome.runtime.sendMessage({ type: 'LOGIN_REQUIRED', payload: {} });
       return;
     }
 
-    // 2. Wait for prompt textarea
+    // 2. Find prompt textarea (up to 10s — Suno SPA may not have rendered yet)
     let textarea;
     try {
-      textarea = await waitForElement(SELECTORS.promptInput, 10000);
+      textarea = await waitFor(SEL.promptInput, 10000);
     } catch (_) {
       chrome.runtime.sendMessage({
         type: 'SUNO_ERROR',
-        payload: { message: 'ไม่พบฟอร์มใน Suno — อาจมีการอัปเดต UI กรุณาลองใหม่หรือกด Copy Prompt' },
+        payload: { code: 'E002', message: 'ไม่พบฟอร์มใน Suno — อาจมีการอัปเดต UI กรุณาลองใหม่หรือกด Copy Prompt' },
       });
       return;
     }
 
-    // 3. Fill prompt
+    // 3. Fill prompt with React-aware setter
     textarea.focus();
-    setNativeValue(textarea, '');
-    await sleep(100);
-    setNativeValue(textarea, prompt);
-    await sleep(200);
+    setReactValue(textarea, '');
+    await sleep(150);
+    setReactValue(textarea, prompt);
+    await sleep(300);
 
-    // 4. Click generate button
-    let btn;
-    try {
-      btn = await waitForElement(SELECTORS.generateBtn, 5000);
-    } catch (_) {
+    // 4. Find and click Create button
+    let createBtn = findCreateButton();
+    if (!createBtn) {
+      // Wait up to 5s for it to appear
+      try { createBtn = await waitFor(SEL.generateBtn, 5000); } catch (_) {}
+    }
+    if (!createBtn) {
       chrome.runtime.sendMessage({
         type: 'SUNO_ERROR',
-        payload: { message: 'ไม่พบปุ่ม Generate ใน Suno' },
+        payload: { code: 'E002', message: 'ไม่พบปุ่ม Create ใน Suno' },
       });
       return;
     }
 
-    btn.click();
+    createBtn.click();
     chrome.runtime.sendMessage({ type: 'FORM_SUBMITTED', payload: {} });
 
-    // 5. Watch for audio
+    // 5. Wait for audio (3 min max)
     try {
       const urls = await watchForAudio(180000);
       chrome.runtime.sendMessage({ type: 'AUDIO_FOUND', payload: { urls } });
-    } catch (_) {
+    } catch (err) {
+      const isTimeout = err.message === 'audio_timeout';
       chrome.runtime.sendMessage({
         type: 'SUNO_ERROR',
-        payload: { message: 'Suno ใช้เวลานานเกินไป กรุณาตรวจสอบที่ Suno.com โดยตรง' },
+        payload: {
+          code:    isTimeout ? 'E003' : 'E004',
+          message: isTimeout
+            ? 'Suno ใช้เวลานานเกินไป กรุณาตรวจสอบที่ Suno.com โดยตรง'
+            : 'ไม่พบไฟล์เสียง กรุณา download จาก Suno.com โดยตรง',
+        },
       });
     }
   }
 
-  // ── Message Handler ───────────────────────────────────────────────
+  // ── Message Listener ───────────────────────────────────────────
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (!msg?.type) return false;
 
     switch (msg.type) {
       case 'FILL_AND_SUBMIT':
-        fillAndSubmit(msg.payload?.prompt ?? '', msg.payload?.songCount ?? 2);
+        fillAndSubmit(msg.payload?.prompt ?? '');
         sendResponse({ ok: true });
         break;
 
       case 'EXTRACT_AUDIO':
         sendResponse({ urls: extractAudioUrls() });
         break;
-    }
 
+      case 'PING':
+        sendResponse({ pong: true });
+        break;
+    }
     return false;
   });
 
-  // ── Utils ─────────────────────────────────────────────────────────
-  function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
+  // ── Utility ────────────────────────────────────────────────────
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 })();
