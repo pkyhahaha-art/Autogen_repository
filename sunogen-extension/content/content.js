@@ -12,15 +12,27 @@
   const SEL = {
     promptInput: [
       'textarea[maxlength="1000"]',
+      'textarea[maxlength="2000"]',
+      'textarea[maxlength="3000"]',
       'textarea.resize-none',
       'textarea[class*="bg-transparent"]',
+      'textarea[placeholder*="prompt" i]',
+      'textarea[placeholder*="describe" i]',
+      'textarea[placeholder*="Enter" i]',
+      '[contenteditable="true"][class*="prompt" i]',
+      '[contenteditable="true"][data-placeholder]',
       'form textarea',
+      'main textarea',
       'textarea',
     ],
     generateBtn: [
       'button:has(span.hxc-btn-content)',
       'button:has(svg.h-5)',
       'button[type="submit"]',
+      'button[aria-label*="create" i]',
+      'button[aria-label*="generate" i]',
+      'button[data-testid*="create" i]',
+      'button[data-testid*="generate" i]',
     ],
     loginIndicator: [
       'img[alt*="avatar" i]',
@@ -28,14 +40,21 @@
       '[data-testid="user-avatar"]',
       '[data-testid="account-btn"]',
       'button[aria-label*="Account" i]',
+      'a[href*="/account"]',
+      'a[href*="/profile"]',
+      '[data-testid*="user" i]',
     ],
     notLoggedIn: [
       'a[href*="sign-in"]',
       'a[href*="login"]',
+      'button[data-testid*="signin" i]',
+      'button[data-testid*="login" i]',
     ],
     audioElement: [
       'audio[src*="suno"]',
       'audio[src*="cdn"]',
+      'audio[src*=".mp3"]',
+      'audio[src*=".wav"]',
       'audio[src]',
     ],
   };
@@ -81,31 +100,40 @@
 
   // ── Login Check ────────────────────────────────────────────────
   function isLoggedIn() {
-    // If a sign-in link is visible → not logged in
+    // If a sign-in link is clearly visible → definitely not logged in
     const notLogged = qs(SEL.notLoggedIn);
     if (notLogged) return false;
-    // If any login indicator exists → logged in
-    const loggedEl = qs(SEL.loginIndicator);
-    return !!loggedEl;
+    // If we can't determine either way → assume logged in and let Suno handle it
+    return true;
   }
 
   // ── React-aware Value Setter ───────────────────────────────────
   function setReactValue(el, value) {
-    const proto = Object.getPrototypeOf(el);
-    const desc  = Object.getOwnPropertyDescriptor(proto, 'value');
-    desc?.set?.call(el, value);
-    el.dispatchEvent(new Event('input',  { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
+    if (el.contentEditable === 'true') {
+      // contenteditable div
+      el.textContent = value;
+      el.dispatchEvent(new Event('input',  { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    } else {
+      // Standard textarea — use React's native setter to bypass synthetic value
+      const proto = Object.getPrototypeOf(el);
+      const desc  = Object.getOwnPropertyDescriptor(proto, 'value');
+      desc?.set?.call(el, value);
+      el.dispatchEvent(new Event('input',  { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
   }
 
   // ── Find Create Button (CSS + text fallback) ───────────────────
   function findCreateButton() {
     const byCss = qs(SEL.generateBtn);
     if (byCss) return byCss;
-    // JS text-content fallback
-    return [...document.querySelectorAll('button')].find(btn =>
-      btn.textContent.trim().includes('Create') && btn.querySelector('svg')
-    ) ?? null;
+    // JS text-content fallback — look for visible enabled buttons with Create/Generate/Make text
+    return [...document.querySelectorAll('button')].find(btn => {
+      if (btn.disabled) return false;
+      const text = btn.textContent.trim().toLowerCase();
+      return (text.includes('create') || text.includes('generate') || text.includes('make')) && btn.querySelector('svg');
+    }) ?? null;
   }
 
   // ── Extract Audio URLs ─────────────────────────────────────────
@@ -169,10 +197,10 @@
       return;
     }
 
-    // 2. Find prompt textarea (up to 10s — Suno SPA may not have rendered yet)
+    // 2. Find prompt textarea (up to 20s — Suno SPA may not have rendered yet)
     let textarea;
     try {
-      textarea = await waitFor(SEL.promptInput, 10000);
+      textarea = await waitFor(SEL.promptInput, 20000);
     } catch (_) {
       chrome.runtime.sendMessage({
         type: 'SUNO_ERROR',
