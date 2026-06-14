@@ -41,8 +41,6 @@
 
       <!-- ══ View: Config ══ -->
       <div class="view" id="view-config">
-
-        <!-- Genre -->
         <section class="section">
           <div class="section-head">
             <span class="section-title">Genre</span>
@@ -55,7 +53,6 @@
           </div>
         </section>
 
-        <!-- Mood -->
         <section class="section">
           <div class="section-head">
             <span class="section-title">Mood</span>
@@ -64,11 +61,8 @@
           <div class="mood-chips" id="mood-chips" role="group" aria-label="เลือก Mood (สูงสุด 3)"></div>
         </section>
 
-        <!-- Parameters -->
         <section class="section">
-          <div class="section-head">
-            <span class="section-title">Parameters</span>
-          </div>
+          <div class="section-head"><span class="section-title">Parameters</span></div>
           <div class="param-rows">
             <div class="param-row">
               <span class="param-label">BPM</span>
@@ -109,7 +103,6 @@
           </div>
         </section>
 
-        <!-- Custom Keywords -->
         <section class="section">
           <div class="section-head">
             <span class="section-title">Custom Keywords</span>
@@ -118,7 +111,6 @@
           <textarea class="textarea" id="custom-additions" rows="2" placeholder="เพิ่ม keywords เช่น smooth jazzy chords, rainy day vibes..."></textarea>
         </section>
 
-        <!-- Prompt Preview -->
         <section class="section">
           <div class="section-head">
             <span class="section-title">Prompt Preview</span>
@@ -131,7 +123,6 @@
           </div>
         </section>
 
-        <!-- Action Bar -->
         <div class="action-bar">
           <div class="count-wrap">
             <span class="count-label">จำนวนเพลง</span>
@@ -149,8 +140,7 @@
             Generate
           </button>
         </div>
-
-      </div><!-- /view-config -->
+      </div>
 
       <!-- ══ View: Progress ══ -->
       <div class="view hidden" id="view-progress">
@@ -173,9 +163,7 @@
           </div>
           <div class="step" id="step-wait">
             <div class="step-indicator"><span class="spinner"></span></div>
-            <div>
-              <span class="step-label">รอ Suno สร้างเพลง...</span>
-            </div>
+            <span class="step-label">รอ Suno สร้างเพลง...</span>
           </div>
           <div class="step" id="step-download-audio">
             <div class="step-indicator">5</div>
@@ -191,18 +179,20 @@
       <!-- ══ View: Results ══ -->
       <div class="view hidden" id="view-results">
         <div class="results-header">
-          <p class="results-title">เพลงพร้อมแล้ว</p>
+          <p class="results-title">เพลงพร้อมแล้ว 🎵</p>
           <button class="btn-ghost" id="btn-back-to-config">← สร้างใหม่</button>
         </div>
         <div class="track-list" id="track-list"></div>
         <div class="results-actions">
-          <button class="btn-primary" id="btn-download-all" style="display:none">Download All</button>
+          <button class="btn-secondary" id="btn-download-all" style="display:none;width:100%">⬇ Download All</button>
         </div>
       </div>
 
     </main>
   </div>
 
+  <!-- lamejs must load before the module so `lamejs` is defined globally -->
+  <script src="../lib/lame.min.js"></script>
   <script src="popup.js" type="module"></script>
 </body>
 </html>

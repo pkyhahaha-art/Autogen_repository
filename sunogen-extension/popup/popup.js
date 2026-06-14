@@ -51,16 +51,13 @@ const GENRE_CATEGORIES = [
   {
     id: 'cinematic', label: 'Cinematic',
     genres: [
-      { id: 'epic_orch',   label: 'Epic Orchestra',   icon: '🎼' },
-      { id: 'cinematic',   label: 'Cinematic Score',  icon: '🎬' },
+      { id: 'epic_orch',    label: 'Epic Orchestra',  icon: '🎼' },
+      { id: 'cinematic',    label: 'Cinematic Score', icon: '🎬' },
       { id: 'dark_ambient', label: 'Dark Ambient',    icon: '🌑' },
-      { id: 'documentary', label: 'Documentary',      icon: '📽️' },
+      { id: 'documentary',  label: 'Documentary',     icon: '📽️' },
     ],
   },
-  {
-    id: 'custom', label: 'Custom ✏️',
-    genres: [],
-  },
+  { id: 'custom', label: 'Custom ✏️', genres: [] },
 ];
 
 // ── Mood Data ──────────────────────────────────────────────────────
@@ -95,7 +92,7 @@ const uiState = {
   duration:           'medium',
   songCount:          2,
   customAdditions:    '',
-  promptEdited:       false,  // true if user manually edited prompt
+  promptEdited:       false,
   currentTracks:      [],
   generating:         false,
   elapsedTimer:       null,
@@ -128,12 +125,11 @@ function renderGenreTabs() {
     btn.textContent = cat.label;
     btn.dataset.catId = cat.id;
     btn.setAttribute('role', 'tab');
-    btn.setAttribute('aria-selected', cat.id === uiState.selectedCategory);
     btn.addEventListener('click', () => {
       uiState.selectedCategory = cat.id;
-      uiState.selectedGenreId = null;
-      $('genre-search').value = '';
-      uiState.searchQuery = '';
+      uiState.selectedGenreId  = null;
+      $('genre-search').value  = '';
+      uiState.searchQuery      = '';
       renderGenreTabs();
       renderGenreGrid();
       updatePromptPreview();
@@ -143,7 +139,7 @@ function renderGenreTabs() {
 }
 
 function renderGenreGrid() {
-  const grid = $('genre-grid');
+  const grid       = $('genre-grid');
   const customWrap = $('custom-genre-wrap');
 
   if (uiState.selectedCategory === 'custom' && !uiState.searchQuery) {
@@ -165,7 +161,7 @@ function renderGenreGrid() {
   }
 
   grid.innerHTML = '';
-  if (genres.length === 0) {
+  if (!genres.length) {
     grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:16px;font-size:12px;">ไม่พบ genre</p>';
     return;
   }
@@ -178,7 +174,7 @@ function renderGenreGrid() {
     card.innerHTML = `<span class="genre-card-icon">${g.icon}</span><span class="genre-card-label">${g.label}</span>`;
     card.addEventListener('click', () => {
       uiState.selectedGenreId = g.id;
-      uiState.promptEdited = false;
+      uiState.promptEdited    = false;
       renderGenreGrid();
       updatePromptPreview();
     });
@@ -191,22 +187,18 @@ function renderMoodChips() {
   const container = $('mood-chips');
   container.innerHTML = '';
   MOODS.forEach(m => {
-    const chip = document.createElement('button');
     const isSelected = uiState.selectedMoods.includes(m.id);
     const isDisabled = !isSelected && uiState.selectedMoods.length >= 3;
+    const chip = document.createElement('button');
     chip.className = 'mood-chip' +
       (isSelected ? ' selected' : '') +
       (isDisabled ? ' disabled'  : '');
     chip.style.setProperty('--chip-color', m.color);
     chip.textContent = m.label;
-    chip.dataset.moodId = m.id;
     if (!isDisabled) {
       chip.addEventListener('click', () => {
-        if (isSelected) {
-          uiState.selectedMoods = uiState.selectedMoods.filter(id => id !== m.id);
-        } else if (uiState.selectedMoods.length < 3) {
-          uiState.selectedMoods.push(m.id);
-        }
+        if (isSelected) uiState.selectedMoods = uiState.selectedMoods.filter(id => id !== m.id);
+        else if (uiState.selectedMoods.length < 3) uiState.selectedMoods.push(m.id);
         uiState.promptEdited = false;
         renderMoodChips();
         updateMoodCount();
@@ -222,25 +214,23 @@ function updateMoodCount() {
   if (el) el.textContent = `${uiState.selectedMoods.length} / 3`;
 }
 
-// ── Prompt Preview ─────────────────────────────────────────────────
-function buildCurrentPrompt() {
-  const genreLabel = resolveGenreLabel();
-  const moodLabels = uiState.selectedMoods.map(id => MOODS.find(m => m.id === id)?.label ?? id);
-  return buildPrompt({
-    genre:         genreLabel,
-    moods:         moodLabels,
-    bpm:           uiState.bpm,
-    vocalType:     uiState.vocalType,
-    language:      uiState.language,
-    duration:      uiState.duration,
-    custom:        uiState.customAdditions,
-  });
-}
-
+// ── Prompt ────────────────────────────────────────────────────────
 function resolveGenreLabel() {
   if (uiState.selectedCategory === 'custom') return uiState.customGenreText;
-  const allGenres = GENRE_CATEGORIES.flatMap(c => c.genres);
-  return allGenres.find(g => g.id === uiState.selectedGenreId)?.label ?? '';
+  return GENRE_CATEGORIES.flatMap(c => c.genres)
+    .find(g => g.id === uiState.selectedGenreId)?.label ?? '';
+}
+
+function buildCurrentPrompt() {
+  return buildPrompt({
+    genre:      resolveGenreLabel(),
+    moods:      uiState.selectedMoods.map(id => MOODS.find(m => m.id === id)?.label ?? id),
+    bpm:        uiState.bpm,
+    vocalType:  uiState.vocalType,
+    language:   uiState.language,
+    duration:   uiState.duration,
+    custom:     uiState.customAdditions,
+  });
 }
 
 function updatePromptPreview() {
@@ -257,20 +247,18 @@ function updateCharCount(len) {
   if (el) el.textContent = `${len} chars`;
 }
 
-// ── Pill Group Helper ──────────────────────────────────────────────
+// ── Pill Groups ────────────────────────────────────────────────────
 function setupPillGroup(groupId, onSelect) {
-  const group = $(groupId);
-  if (!group) return;
-  group.querySelectorAll('.btn-pill').forEach(btn => {
+  $(groupId)?.querySelectorAll('.btn-pill').forEach(btn => {
     btn.addEventListener('click', () => {
-      group.querySelectorAll('.btn-pill').forEach(b => b.classList.remove('btn-pill-active'));
+      $(groupId).querySelectorAll('.btn-pill').forEach(b => b.classList.remove('btn-pill-active'));
       btn.classList.add('btn-pill-active');
       onSelect(btn.dataset.value);
     });
   });
 }
 
-// ── Step Progress ──────────────────────────────────────────────────
+// ── Progress Steps ─────────────────────────────────────────────────
 function setStep(stepId, state) {
   const el = $(stepId);
   if (!el) return;
@@ -297,9 +285,7 @@ function startElapsedTimer() {
     if (el) el.textContent = `${m}:${s}`;
   }, 1000);
 }
-function stopElapsedTimer() {
-  clearInterval(uiState.elapsedTimer);
-}
+function stopElapsedTimer() { clearInterval(uiState.elapsedTimer); }
 
 // ── Keepalive ─────────────────────────────────────────────────────
 let keepaliveTimer = null;
@@ -309,98 +295,194 @@ function startKeepalive() {
     chrome.runtime.sendMessage({ type: 'KEEPALIVE', payload: {} }).catch(() => {});
   }, 20000);
 }
-function stopKeepalive() {
-  clearInterval(keepaliveTimer);
-}
+function stopKeepalive() { clearInterval(keepaliveTimer); }
 
-// ── Background Message Listener ────────────────────────────────────
+// ── Background Messages ────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg) => {
   if (!msg?.type) return;
   switch (msg.type) {
-    case 'GENERATION_PROGRESS': {
-      const { step } = msg.payload ?? {};
-      if (step) setStep(step, 'active');
+    case 'GENERATION_PROGRESS':
+      if (msg.payload?.step) setStep(msg.payload.step, 'active');
       break;
-    }
-    case 'GENERATION_COMPLETE': {
-      stopElapsedTimer();
-      stopKeepalive();
-      uiState.generating = false;
+    case 'GENERATION_COMPLETE':
+      stopElapsedTimer(); stopKeepalive();
+      uiState.generating    = false;
       uiState.currentTracks = msg.payload?.tracks ?? [];
       renderResults(uiState.currentTracks);
       showView('view-results');
       break;
-    }
-    case 'GENERATION_ERROR': {
-      stopElapsedTimer();
-      stopKeepalive();
+    case 'GENERATION_ERROR':
+      stopElapsedTimer(); stopKeepalive();
       uiState.generating = false;
       showError(msg.payload?.userMessage ?? 'เกิดข้อผิดพลาด');
       showView('view-config');
       break;
-    }
   }
 });
 
-// ── Results Rendering ──────────────────────────────────────────────
+// ── Results & Track Cards ──────────────────────────────────────────
 function renderResults(tracks) {
   const list = $('track-list');
   list.innerHTML = '';
-  const dl = $('btn-download-all');
-  if (dl) dl.style.display = tracks.length > 1 ? 'block' : 'none';
 
   tracks.forEach((track, i) => {
+    track.selectedPreset = 'original';
+    track.cachedBuffer   = null;
+
     const card = document.createElement('div');
     card.className = 'track-card';
+    card.dataset.index = i;
     card.innerHTML = `
-      <span class="track-name">${track.name ?? `Track ${i + 1}`}</span>
-      <div class="track-actions">
-        <button class="btn-secondary btn-play" data-index="${i}">▶ Preview</button>
-        <button class="btn-primary btn-dl" data-index="${i}" style="font-size:12px;padding:6px 14px">⬇ Download MP3</button>
-      </div>`;
+      <div class="track-header">
+        <span class="track-name">${escHtml(track.name ?? `Track ${i + 1}`)}</span>
+        <span class="track-time" id="track-time-${i}">0:00</span>
+      </div>
+      <audio id="track-audio-${i}" preload="metadata">
+        <source src="${escHtml(track.url)}">
+      </audio>
+      <div class="player">
+        <button class="btn-play" id="btn-play-${i}" aria-label="Play / Pause">▶</button>
+        <input type="range" class="seek-bar" id="seek-${i}" value="0" min="0" max="100" step="0.1" aria-label="Seek">
+      </div>
+      <div class="eq-row">
+        <span class="eq-label">EQ Preset</span>
+        <div class="eq-presets" id="eq-presets-${i}">
+          ${['original','clear','crispy','warm','punchy'].map(p =>
+            `<button class="btn-eq${p === 'original' ? ' eq-active' : ''}" data-preset="${p}">${capitalize(p)}</button>`
+          ).join('')}
+        </div>
+      </div>
+      <div class="track-progress hidden" id="track-progress-${i}">
+        <div class="track-progress-bar">
+          <div class="track-progress-fill" id="track-progress-fill-${i}"></div>
+        </div>
+        <span class="track-progress-label" id="track-progress-label-${i}">กำลัง Process...</span>
+      </div>
+      <button class="btn-primary btn-process-dl" id="btn-dl-${i}">⬇ Process &amp; Download</button>
+    `;
     list.appendChild(card);
+    wireTrackCard(i, track);
   });
 
-  list.querySelectorAll('.btn-dl').forEach(btn => {
+  const dlAll = $('btn-download-all');
+  if (dlAll) dlAll.style.display = tracks.length > 1 ? 'block' : 'none';
+}
+
+function wireTrackCard(idx, track) {
+  const audio   = $(`track-audio-${idx}`);
+  const playBtn = $(`btn-play-${idx}`);
+  const seekBar = $(`seek-${idx}`);
+  const timeEl  = $(`track-time-${idx}`);
+
+  // Playback controls
+  playBtn?.addEventListener('click', () => {
+    if (audio.paused) { audio.play(); playBtn.textContent = '⏸'; }
+    else              { audio.pause(); playBtn.textContent = '▶'; }
+  });
+
+  audio?.addEventListener('timeupdate', () => {
+    if (!audio.duration) return;
+    if (seekBar) seekBar.value = (audio.currentTime / audio.duration) * 100;
+    if (timeEl)  timeEl.textContent = `${fmt(audio.currentTime)} / ${fmt(audio.duration)}`;
+  });
+
+  audio?.addEventListener('loadedmetadata', () => {
+    if (timeEl) timeEl.textContent = `0:00 / ${fmt(audio.duration)}`;
+  });
+
+  audio?.addEventListener('ended', () => {
+    if (playBtn) playBtn.textContent = '▶';
+    if (seekBar) seekBar.value = 0;
+  });
+
+  seekBar?.addEventListener('input', () => {
+    if (audio.duration) audio.currentTime = (seekBar.value / 100) * audio.duration;
+  });
+
+  // EQ preset selection
+  document.querySelectorAll(`#eq-presets-${idx} .btn-eq`).forEach(btn => {
     btn.addEventListener('click', () => {
-      const idx = Number(btn.dataset.index);
-      triggerDownload(uiState.currentTracks[idx], idx);
+      document.querySelectorAll(`#eq-presets-${idx} .btn-eq`).forEach(b => b.classList.remove('eq-active'));
+      btn.classList.add('eq-active');
+      track.selectedPreset = btn.dataset.preset;
     });
   });
+
+  // Process & Download
+  $(`btn-dl-${idx}`)?.addEventListener('click', () => processAndDownload(idx));
 }
 
-async function triggerDownload(track, idx) {
-  // Phase 4 will add full EQ processing — direct download for now
-  const genre  = resolveGenreLabel();
-  const moods  = uiState.selectedMoods.map(id => MOODS.find(m => m.id === id)?.label ?? id);
-  const filename = buildFilename(genre, moods);
-  await chrome.downloads.download({ url: track.url, filename });
-}
+// ── Audio Processing & Download ────────────────────────────────────
+async function processAndDownload(idx) {
+  const track   = uiState.currentTracks[idx];
+  const preset  = track.selectedPreset ?? 'original';
+  const progEl  = $(`track-progress-${idx}`);
+  const fillEl  = $(`track-progress-fill-${idx}`);
+  const labelEl = $(`track-progress-label-${idx}`);
+  const dlBtn   = $(`btn-dl-${idx}`);
 
-// ── Generate ───────────────────────────────────────────────────────
-async function handleGenerate() {
-  const prompt = $('prompt-preview')?.value?.trim();
-  if (!prompt) {
-    showError('กรุณาเลือก Genre และ Mood ก่อน Generate');
-    return;
+  const setProgress = (pct, label) => {
+    if (fillEl)  fillEl.style.width   = pct + '%';
+    if (labelEl) labelEl.textContent  = label;
+  };
+
+  progEl?.classList.remove('hidden');
+  if (dlBtn) dlBtn.disabled = true;
+
+  try {
+    // 1. Fetch & decode
+    setProgress(5, 'กำลังโหลดเสียง...');
+    const { fetchAndDecode, processAudio, PRESETS } = await import('../audio/audioProcessor.js');
+
+    if (!track.cachedBuffer) {
+      track.cachedBuffer = await fetchAndDecode(track.url);
+    }
+
+    // 2. EQ processing
+    setProgress(30, 'กำลัง Process EQ...');
+    const processed = await processAudio(track.cachedBuffer, PRESETS[preset]);
+
+    // 3. MP3 encoding
+    const { encodeMp3 } = await import('../audio/mp3Exporter.js');
+    const mp3Blob = await encodeMp3(processed, 192, pct => {
+      setProgress(30 + pct * 0.65, `Encoding MP3... ${pct}%`);
+    });
+
+    // 4. Download
+    setProgress(98, 'กำลัง Download...');
+    const blobUrl  = URL.createObjectURL(mp3Blob);
+    const genre    = resolveGenreLabel();
+    const moods    = uiState.selectedMoods.map(id => MOODS.find(m => m.id === id)?.label ?? id);
+    const filename = buildFilename(genre, moods);
+    await chrome.downloads.download({ url: blobUrl, filename });
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    setProgress(100, 'Download สำเร็จ ✓');
+    setTimeout(() => progEl?.classList.add('hidden'), 2000);
+
+  } catch (err) {
+    progEl?.classList.add('hidden');
+    if (err.message === 'CORS_ERROR') {
+      // Fallback: download original audio without processing
+      showError('โหลดไฟล์ไม่ได้ (CORS) — download ต้นฉบับแทน');
+      chrome.downloads.download({ url: track.url }).catch(() =>
+        showError('ดาวน์โหลดไม่สำเร็จ (E008) กรุณาตรวจสอบ Chrome download settings')
+      );
+    } else if (err.message?.startsWith('HTTP_')) {
+      showError(`โหลดไฟล์ไม่ได้ (${err.message}) — ลองใหม่หรือ download จาก Suno.com`);
+    } else {
+      showError('เกิดข้อผิดพลาดในการแปลงไฟล์ (E007) — กรุณาลองใหม่');
+      console.error('[SunoGen] processAndDownload error:', err);
+    }
+  } finally {
+    if (dlBtn) dlBtn.disabled = false;
   }
-  hideError();
-  uiState.generating = true;
-  resetSteps();
-  showView('view-progress');
-  startElapsedTimer();
-  startKeepalive();
+}
 
-  chrome.runtime.sendMessage({
-    type: 'START_GENERATION',
-    payload: { prompt, songCount: uiState.songCount, settings: {} },
-  }).catch(() => {
-    stopElapsedTimer();
-    stopKeepalive();
-    uiState.generating = false;
-    showError('ไม่สามารถเชื่อมต่อ background service ได้');
-    showView('view-config');
-  });
+// ── Batch Download ─────────────────────────────────────────────────
+async function downloadAll() {
+  for (let i = 0; i < uiState.currentTracks.length; i++) {
+    await processAndDownload(i);
+  }
 }
 
 // ── Copy Prompt ────────────────────────────────────────────────────
@@ -416,17 +498,54 @@ function copyPrompt() {
   });
 }
 
+// ── Generate ───────────────────────────────────────────────────────
+async function handleGenerate() {
+  const prompt = $('prompt-preview')?.value?.trim();
+  if (!prompt) { showError('กรุณาเลือก Genre และ Mood ก่อน Generate'); return; }
+  hideError();
+  uiState.generating = true;
+  resetSteps();
+  showView('view-progress');
+  startElapsedTimer();
+  startKeepalive();
+
+  chrome.runtime.sendMessage({
+    type: 'START_GENERATION',
+    payload: { prompt, songCount: uiState.songCount, settings: {} },
+  }).catch(() => {
+    stopElapsedTimer(); stopKeepalive();
+    uiState.generating = false;
+    showError('ไม่สามารถเชื่อมต่อ background service ได้');
+    showView('view-config');
+  });
+}
+
+// ── Utils ──────────────────────────────────────────────────────────
+function fmt(sec) {
+  if (!isFinite(sec)) return '-:--';
+  const m = Math.floor(sec / 60);
+  const s = String(Math.floor(sec % 60)).padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // ── Init ───────────────────────────────────────────────────────────
 async function init() {
   const settings = await getSettings();
   uiState.songCount = settings.defaultSongCount ?? 2;
 
-  // Sync song count pill
   $('count-group')?.querySelectorAll('.btn-pill').forEach(btn => {
     btn.classList.toggle('btn-pill-active', Number(btn.dataset.value) === uiState.songCount);
   });
 
-  // Check if generation was running while popup was closed (Option A restore)
+  // Restore state if generation was running while popup was closed
   try {
     const res = await chrome.runtime.sendMessage({ type: 'POPUP_OPENED', payload: {} });
     if (res?.restore === 'results' && res.tracks) {
@@ -441,81 +560,64 @@ async function init() {
       startKeepalive();
       uiState.generating = true;
     }
-  } catch (_) {
-    // Background not ready yet — start fresh
-  }
+  } catch (_) {}
 
-  // Render dynamic sections
+  // Genre
   renderGenreTabs();
   renderGenreGrid();
-  renderMoodChips();
-  updatePromptPreview();
-
-  // Genre search
   $('genre-search')?.addEventListener('input', e => {
     uiState.searchQuery = e.target.value.trim();
     renderGenreGrid();
   });
-
-  // Custom genre input
   $('custom-genre-input')?.addEventListener('input', e => {
     uiState.customGenreText = e.target.value;
-    uiState.promptEdited = false;
+    uiState.promptEdited    = false;
     updatePromptPreview();
   });
 
-  // Parameter pill groups
+  // Mood
+  renderMoodChips();
+  updateMoodCount();
+
+  // Parameters
   setupPillGroup('bpm-group',      v => { uiState.bpm       = v; uiState.promptEdited = false; updatePromptPreview(); });
   setupPillGroup('vocal-group',    v => { uiState.vocalType = v; uiState.promptEdited = false; updatePromptPreview(); });
   setupPillGroup('language-group', v => { uiState.language  = v; uiState.promptEdited = false; updatePromptPreview(); });
   setupPillGroup('duration-group', v => { uiState.duration  = v; uiState.promptEdited = false; updatePromptPreview(); });
   setupPillGroup('count-group',    v => { uiState.songCount = Number(v); });
 
-  // Custom keywords
   $('custom-additions')?.addEventListener('input', e => {
     uiState.customAdditions = e.target.value;
-    uiState.promptEdited = false;
+    uiState.promptEdited    = false;
     updatePromptPreview();
   });
 
-  // Prompt manual edit
+  // Prompt
   $('prompt-preview')?.addEventListener('input', e => {
     uiState.promptEdited = true;
     updateCharCount(e.target.value.length);
   });
-
-  // Regenerate prompt
   $('btn-regen-prompt')?.addEventListener('click', () => {
     uiState.promptEdited = false;
     updatePromptPreview();
   });
-
-  // Copy prompt
   $('btn-copy-prompt')?.addEventListener('click', copyPrompt);
   $('btn-copy-prompt-progress')?.addEventListener('click', copyPrompt);
 
-  // Generate
+  // Actions
   $('btn-generate')?.addEventListener('click', handleGenerate);
-
-  // Cancel
   $('btn-cancel')?.addEventListener('click', () => {
-    stopElapsedTimer();
-    stopKeepalive();
+    stopElapsedTimer(); stopKeepalive();
     uiState.generating = false;
     chrome.runtime.sendMessage({ type: 'CANCEL_GENERATION', payload: {} }).catch(() => {});
     showView('view-config');
   });
-
-  // Back to config
   $('btn-back-to-config')?.addEventListener('click', () => showView('view-config'));
-
-  // Error dismiss
+  $('btn-download-all')?.addEventListener('click', downloadAll);
   $('btn-error-dismiss')?.addEventListener('click', hideError);
-
-  // Settings (Phase 5)
   $('btn-settings')?.addEventListener('click', () => {});
 
-  showView('view-config');
+  updatePromptPreview();
 }
 
 document.addEventListener('DOMContentLoaded', init);
