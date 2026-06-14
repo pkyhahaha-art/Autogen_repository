@@ -100,7 +100,7 @@ const uiState = {
 
 // ── DOM Helpers ────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
-const VIEWS = ['view-config', 'view-progress', 'view-results'];
+const VIEWS = ['view-config', 'view-progress', 'view-results', 'view-settings'];
 
 function showView(id) {
   VIEWS.forEach(v => $(v)?.classList.toggle('hidden', v !== id));
@@ -442,9 +442,10 @@ async function processAndDownload(idx) {
     setProgress(30, 'กำลัง Process EQ...');
     const processed = await processAudio(track.cachedBuffer, PRESETS[preset]);
 
-    // 3. MP3 encoding
+    // 3. MP3 encoding (use quality from settings)
+    const s = await getSettings();
     const { encodeMp3 } = await import('../audio/mp3Exporter.js');
-    const mp3Blob = await encodeMp3(processed, 192, pct => {
+    const mp3Blob = await encodeMp3(processed, s.mp3Quality ?? 192, pct => {
       setProgress(30 + pct * 0.65, `Encoding MP3... ${pct}%`);
     });
 
@@ -498,6 +499,117 @@ function copyPrompt() {
   });
 }
 
+// ── Settings Panel ─────────────────────────────────────────────────
+let currentSettings = {};
+
+async function openSettings() {
+  currentSettings = await getSettings();
+  syncSettingsUI(currentSettings);
+  await loadHistory();
+  showView('view-settings');
+}
+
+function syncSettingsUI(s) {
+  // Song count pills
+  const countGroup = $('settings-count');
+  if (countGroup) {
+    countGroup.innerHTML = [1,2,3,4].map(n =>
+      `<button class="btn-pill${n === s.defaultSongCount ? ' btn-pill-active' : ''}" data-value="${n}">${n}</button>`
+    ).join('');
+    countGroup.querySelectorAll('.btn-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        countGroup.querySelectorAll('.btn-pill').forEach(b => b.classList.remove('btn-pill-active'));
+        btn.classList.add('btn-pill-active');
+        saveSetting('defaultSongCount', Number(btn.dataset.value));
+        uiState.songCount = Number(btn.dataset.value);
+        syncCountPillsConfig(uiState.songCount);
+      });
+    });
+  }
+
+  // MP3 quality
+  $('settings-quality')?.querySelectorAll('.btn-pill').forEach(btn => {
+    btn.classList.toggle('btn-pill-active', Number(btn.dataset.value) === s.mp3Quality);
+    btn.addEventListener('click', () => {
+      $('settings-quality').querySelectorAll('.btn-pill').forEach(b => b.classList.remove('btn-pill-active'));
+      btn.classList.add('btn-pill-active');
+      saveSetting('mp3Quality', Number(btn.dataset.value));
+    });
+  });
+
+  const autoOpen = $('settings-auto-open');
+  if (autoOpen) {
+    autoOpen.checked = s.autoOpenSunoTab ?? true;
+    autoOpen.addEventListener('change', () => saveSetting('autoOpenSunoTab', autoOpen.checked));
+  }
+
+  const advAudio = $('settings-adv-audio');
+  if (advAudio) {
+    advAudio.checked = s.showAdvancedAudio ?? false;
+    advAudio.addEventListener('change', () => saveSetting('showAdvancedAudio', advAudio.checked));
+  }
+}
+
+async function saveSetting(key, value) {
+  currentSettings[key] = value;
+  await chrome.runtime.sendMessage({
+    type: 'SAVE_SETTINGS', payload: { settings: currentSettings },
+  }).catch(() => {});
+}
+
+function syncCountPillsConfig(count) {
+  $('count-group')?.querySelectorAll('.btn-pill').forEach(btn => {
+    btn.classList.toggle('btn-pill-active', Number(btn.dataset.value) === count);
+  });
+}
+
+// ── History ────────────────────────────────────────────────────────
+const MONTH_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+async function loadHistory() {
+  const list = $('history-list');
+  if (!list) return;
+  list.innerHTML = '<p class="history-empty">กำลังโหลด...</p>';
+
+  const res = await chrome.runtime.sendMessage({ type: 'GET_HISTORY', payload: {} }).catch(() => null);
+  const sessions = res?.sessions ?? [];
+
+  if (!sessions.length) {
+    list.innerHTML = '<p class="history-empty">ยังไม่มีประวัติการสร้างเพลง</p>';
+    return;
+  }
+
+  list.innerHTML = '';
+  sessions.forEach(s => {
+    const d      = new Date(s.timestamp);
+    const dateStr = `${d.getDate()} ${MONTH_TH[d.getMonth()]} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const item    = document.createElement('div');
+    item.className = 'history-item';
+    item.innerHTML = `
+      <div class="history-item-header">
+        <span class="history-genre">${escHtml(s.genre || 'Unknown Genre')}</span>
+        <span class="history-time">${dateStr}</span>
+      </div>
+      ${s.moods?.length ? `<div class="history-moods">${s.moods.map(m => escHtml(m)).join(' • ')}</div>` : ''}
+      <p class="history-prompt">${escHtml((s.prompt || '').slice(0, 100))}${(s.prompt?.length ?? 0) > 100 ? '...' : ''}</p>
+      <div class="history-footer">
+        <span class="history-track-count">${s.songCount ?? s.tracks?.length ?? 0} เพลง</span>
+        <button class="btn-ghost">↺ Re-use</button>
+      </div>
+    `;
+    item.querySelector('.btn-ghost')?.addEventListener('click', () => reuseSession(s));
+    list.appendChild(item);
+  });
+}
+
+function reuseSession(session) {
+  if (session.prompt) {
+    const ta = $('prompt-preview');
+    if (ta) { ta.value = session.prompt; uiState.promptEdited = true; updateCharCount(session.prompt.length); }
+  }
+  showView('view-config');
+}
+
 // ── Generate ───────────────────────────────────────────────────────
 async function handleGenerate() {
   const prompt = $('prompt-preview')?.value?.trim();
@@ -509,9 +621,14 @@ async function handleGenerate() {
   startElapsedTimer();
   startKeepalive();
 
+  const meta = {
+    genre: resolveGenreLabel(),
+    moods: uiState.selectedMoods.map(id => MOODS.find(m => m.id === id)?.label ?? id),
+  };
+
   chrome.runtime.sendMessage({
     type: 'START_GENERATION',
-    payload: { prompt, songCount: uiState.songCount, settings: {} },
+    payload: { prompt, songCount: uiState.songCount, meta },
   }).catch(() => {
     stopElapsedTimer(); stopKeepalive();
     uiState.generating = false;
@@ -615,7 +732,12 @@ async function init() {
   $('btn-back-to-config')?.addEventListener('click', () => showView('view-config'));
   $('btn-download-all')?.addEventListener('click', downloadAll);
   $('btn-error-dismiss')?.addEventListener('click', hideError);
-  $('btn-settings')?.addEventListener('click', () => {});
+  $('btn-settings')?.addEventListener('click', openSettings);
+  $('btn-settings-back')?.addEventListener('click', () => showView('view-config'));
+  $('btn-clear-history')?.addEventListener('click', async () => {
+    await chrome.runtime.sendMessage({ type: 'CLEAR_HISTORY', payload: {} }).catch(() => {});
+    await loadHistory();
+  });
 
   updatePromptPreview();
 }

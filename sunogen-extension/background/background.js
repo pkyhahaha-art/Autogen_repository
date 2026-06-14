@@ -116,7 +116,7 @@ async function handlePopupOpened(sendResponse) {
   sendResponse({ restore: null });
 }
 
-async function handleStartGeneration({ prompt, songCount } = {}) {
+async function handleStartGeneration({ prompt, songCount, meta } = {}) {
   if (mem.generating) return { ok: false, error: 'Already generating' };
 
   mem = {
@@ -124,6 +124,7 @@ async function handleStartGeneration({ prompt, songCount } = {}) {
     generating:    true,
     currentPrompt: prompt,
     songCount:     Math.min(songCount ?? 2, 2),
+    meta:          meta ?? null,
   };
   await persistState();
 
@@ -176,7 +177,13 @@ async function handleAudioFound(urls) {
 
     try {
       const { saveSession } = await import('../utils/storage.js');
-      await saveSession({ prompt: mem.currentPrompt, tracks, songCount: mem.songCount });
+      await saveSession({
+        prompt:    mem.currentPrompt,
+        tracks,
+        songCount: mem.songCount,
+        genre:     mem.meta?.genre  ?? null,
+        moods:     mem.meta?.moods  ?? [],
+      });
     } catch (_) {}
   }
 }

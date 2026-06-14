@@ -176,6 +176,62 @@
         </div>
       </div>
 
+      <!-- ══ View: Settings + History ══ -->
+      <div class="view hidden" id="view-settings">
+        <div class="settings-header">
+          <button class="btn-icon" id="btn-settings-back" aria-label="Back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <span class="settings-title">Settings</span>
+        </div>
+
+        <div class="settings-body">
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <span class="settings-label">Default Song Count</span>
+            </div>
+            <div class="btn-pill-group" id="settings-count"></div>
+          </div>
+          <div class="settings-item">
+            <span class="settings-label">MP3 Quality</span>
+            <div class="btn-pill-group" id="settings-quality">
+              <button class="btn-pill btn-pill-active" data-value="192">192 kbps</button>
+              <button class="btn-pill" data-value="320">320 kbps</button>
+            </div>
+          </div>
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <span class="settings-label">Auto-open Suno Tab</span>
+              <span class="settings-desc">เปิด suno.com อัตโนมัติเมื่อ Generate</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="settings-auto-open" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <span class="settings-label">Show Advanced Audio</span>
+              <span class="settings-desc">แสดงตัวควบคุม EQ แบบละเอียด</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="settings-adv-audio">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-section-head">
+          <span class="section-title">Generation History</span>
+          <button class="btn-ghost" id="btn-clear-history">Clear All</button>
+        </div>
+        <div class="history-list" id="history-list">
+          <p class="history-empty">กำลังโหลด...</p>
+        </div>
+      </div>
+
       <!-- ══ View: Results ══ -->
       <div class="view hidden" id="view-results">
         <div class="results-header">
