@@ -1,30 +1,36 @@
-import { saveSession } from '../utils/storage.js';
+// No static imports — dynamic imports only (avoids SW boot failures in MV3)
 
-// ── Generation State ───────────────────────────────────────────────
-// Persisted to chrome.storage.session so it survives popup close (Option A).
+// ── State ──────────────────────────────────────────────────────────
+// Persisted to chrome.storage.local (session key cleared on complete/cancel)
+// so generation survives popup close (Option A).
+const STATE_KEY = 'sg_active_gen';
+
 const DEFAULT_STATE = {
-  generating:     false,
-  sunoTabId:      null,
-  currentPrompt:  null,
-  songCount:      2,
-  collectedUrls:  [],
-  completedTracks: null,  // set when generation finishes
-  lastStep:       null,
+  generating:      false,
+  sunoTabId:       null,
+  currentPrompt:   null,
+  songCount:       2,
+  collectedUrls:   [],
+  completedTracks: null,
+  lastStep:        null,
 };
 
-let state = { ...DEFAULT_STATE };
+let mem = { ...DEFAULT_STATE };
 
-async function persistState() {
-  await chrome.storage.session.set({ sg_gen_state: state }).catch(() => {});
+function persistState() {
+  return chrome.storage.local.set({ [STATE_KEY]: mem }).catch(() => {});
 }
 
 async function loadState() {
-  const res = await chrome.storage.session.get('sg_gen_state').catch(() => ({}));
-  if (res.sg_gen_state) state = { ...DEFAULT_STATE, ...res.sg_gen_state };
+  try {
+    const res = await chrome.storage.local.get(STATE_KEY);
+    if (res[STATE_KEY]) mem = { ...DEFAULT_STATE, ...res[STATE_KEY] };
+  } catch (_) {}
 }
 
-// ── Keepalive ping receiver ────────────────────────────────────────
-// (Receiving any message resets the SW timer — no explicit action needed.)
+function clearActiveState() {
+  return chrome.storage.local.remove(STATE_KEY).catch(() => {});
+}
 
 // ── Message Router ─────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -34,16 +40,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     case 'POPUP_OPENED':
       handlePopupOpened(sendResponse);
-      return true; // async
+      return true;
 
     case 'START_GENERATION':
       handleStartGeneration(msg.payload).then(sendResponse);
       return true;
 
     case 'CANCEL_GENERATION':
-      state.generating   = false;
-      state.completedTracks = null;
-      persistState();
+      mem.generating      = false;
+      mem.completedTracks = null;
+      clearActiveState();
       sendResponse({ ok: true });
       break;
 
@@ -63,11 +69,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({ alive: true });
       break;
 
-    // ── From content script ──
     case 'FORM_SUBMITTED':
-      state.lastStep = 'step-wait';
+      mem.lastStep = 'step-wait';
       persistState();
-      notifyPopup('GENERATION_PROGRESS', { step: 'step-wait', message: 'รอ Suno สร้างเพลง...' });
+      notifyPopup('GENERATION_PROGRESS', { step: 'step-wait' });
       break;
 
     case 'AUDIO_FOUND':
@@ -79,7 +84,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       break;
 
     case 'LOGIN_REQUIRED':
-      state.generating = false;
+      mem.generating = false;
       persistState();
       notifyPopup('GENERATION_ERROR', {
         error: 'LOGIN_REQUIRED', code: 'E001',
@@ -95,16 +100,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 async function handlePopupOpened(sendResponse) {
   await loadState();
 
-  if (state.completedTracks) {
-    // Generation finished while popup was closed
-    sendResponse({ restore: 'results', tracks: state.completedTracks });
-    state.completedTracks = null;
-    persistState();
+  if (mem.completedTracks) {
+    const tracks = mem.completedTracks;
+    mem.completedTracks = null;
+    clearActiveState();
+    sendResponse({ restore: 'results', tracks });
     return;
   }
 
-  if (state.generating) {
-    sendResponse({ restore: 'progress', step: state.lastStep });
+  if (mem.generating) {
+    sendResponse({ restore: 'progress', step: mem.lastStep });
     return;
   }
 
@@ -112,13 +117,13 @@ async function handlePopupOpened(sendResponse) {
 }
 
 async function handleStartGeneration({ prompt, songCount } = {}) {
-  if (state.generating) return { ok: false, error: 'Already generating' };
+  if (mem.generating) return { ok: false, error: 'Already generating' };
 
-  state = {
+  mem = {
     ...DEFAULT_STATE,
     generating:    true,
     currentPrompt: prompt,
-    songCount:     Math.min(songCount ?? 2, 2), // Phase 3: cap at 2
+    songCount:     Math.min(songCount ?? 2, 2),
   };
   await persistState();
 
@@ -126,26 +131,25 @@ async function handleStartGeneration({ prompt, songCount } = {}) {
 
   try {
     const tabId = await ensureSunoTab();
-    state.sunoTabId = tabId;
-    state.lastStep  = 'step-fill-prompt';
+    mem.sunoTabId = tabId;
+    mem.lastStep  = 'step-fill-prompt';
     await persistState();
 
     notifyPopup('GENERATION_PROGRESS', { step: 'step-fill-prompt' });
 
-    // Content script is auto-injected via manifest — send message with retry
     await sendToContentWithRetry(tabId, {
       type:    'FILL_AND_SUBMIT',
-      payload: { prompt, songCount: state.songCount },
+      payload: { prompt, songCount: mem.songCount },
     });
 
-    state.lastStep = 'step-submit';
+    mem.lastStep = 'step-submit';
     await persistState();
     notifyPopup('GENERATION_PROGRESS', { step: 'step-submit' });
 
     return { ok: true };
 
   } catch (err) {
-    state.generating = false;
+    mem.generating = false;
     await persistState();
     notifyPopup('GENERATION_ERROR', {
       error: err.message, code: 'E002',
@@ -155,29 +159,25 @@ async function handleStartGeneration({ prompt, songCount } = {}) {
   }
 }
 
-function handleAudioFound(urls) {
-  state.collectedUrls.push(...urls);
+async function handleAudioFound(urls) {
+  mem.collectedUrls.push(...urls);
   notifyPopup('GENERATION_PROGRESS', { step: 'step-download-audio' });
 
-  if (state.collectedUrls.length >= state.songCount || state.collectedUrls.length >= 2) {
-    const tracks = state.collectedUrls.slice(0, state.songCount).map((url, i) => ({
-      url,
-      name:     `Track ${i + 1}`,
-      duration: null,
+  if (mem.collectedUrls.length >= mem.songCount || mem.collectedUrls.length >= 2) {
+    const tracks = mem.collectedUrls.slice(0, mem.songCount).map((url, i) => ({
+      url, name: `Track ${i + 1}`, duration: null,
     }));
 
-    state.generating      = false;
-    state.completedTracks = tracks;
-    persistState();
+    mem.generating      = false;
+    mem.completedTracks = tracks;
+    await persistState();
 
     notifyPopup('GENERATION_COMPLETE', { tracks });
 
-    // Save to history
-    saveSession({
-      prompt: state.currentPrompt,
-      tracks,
-      songCount: state.songCount,
-    }).catch(() => {});
+    try {
+      const { saveSession } = await import('../utils/storage.js');
+      await saveSession({ prompt: mem.currentPrompt, tracks, songCount: mem.songCount });
+    } catch (_) {}
   }
 }
 
@@ -189,7 +189,7 @@ function handleSunoError({ code, message } = {}) {
     E004: 'ไม่พบไฟล์เสียง กรุณา download จาก Suno.com โดยตรง',
     E005: 'Suno แจ้งว่าใช้งานถึงขีดจำกัดแล้ว กรุณารอสักครู่',
   };
-  state.generating = false;
+  mem.generating = false;
   persistState();
   notifyPopup('GENERATION_ERROR', {
     error:       message,
@@ -199,20 +199,26 @@ function handleSunoError({ code, message } = {}) {
 }
 
 async function handleGetHistory() {
-  const { getHistory } = await import('../utils/storage.js');
-  return { sessions: await getHistory() };
+  try {
+    const { getHistory } = await import('../utils/storage.js');
+    return { sessions: await getHistory() };
+  } catch (_) { return { sessions: [] }; }
 }
 
 async function handleClearHistory() {
-  const { clearHistory } = await import('../utils/storage.js');
-  await clearHistory();
+  try {
+    const { clearHistory } = await import('../utils/storage.js');
+    await clearHistory();
+  } catch (_) {}
   return { ok: true };
 }
 
 async function handleSaveSettings(settings) {
   if (!settings) return { ok: false };
-  const { saveSettings } = await import('../utils/storage.js');
-  await saveSettings(settings);
+  try {
+    const { saveSettings } = await import('../utils/storage.js');
+    await saveSettings(settings);
+  } catch (_) {}
   return { ok: true };
 }
 
@@ -228,7 +234,7 @@ async function ensureSunoTab() {
       active: true,
     });
     if (needsNav) await waitForTabLoad(tab.id);
-    else await sleep(500); // small grace period for SPA re-render
+    else await sleep(600);
     return tab.id;
   }
 
@@ -255,23 +261,20 @@ function waitForTabLoad(tabId, timeoutMs = 15000) {
   });
 }
 
-// ── Send to Content with Retry ─────────────────────────────────────
 async function sendToContentWithRetry(tabId, message, maxRetries = 6) {
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await chrome.tabs.sendMessage(tabId, message);
     } catch (err) {
       if (i === maxRetries - 1) throw err;
-      await sleep(600 * (i + 1)); // 600ms, 1.2s, 1.8s …
+      await sleep(600 * (i + 1));
     }
   }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
 function notifyPopup(type, payload) {
-  chrome.runtime.sendMessage({ type, payload }).catch(() => {
-    // Popup may be closed — fine, state is persisted
-  });
+  chrome.runtime.sendMessage({ type, payload }).catch(() => {});
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
